@@ -28,12 +28,22 @@ class Server():
 
 
     def handle_client(self,conn,address):
+        nick = self.login_loop(conn)
+
+        if nick is None:
+            return
+        
+        self.clients[nick] = conn
+        self.sockets[conn] = nick
+        self.chat_loop(conn,nick)
+
+    def login_loop(self,conn):
         while True:
             raw_data = conn.recv(1024)
 
             if not raw_data:
                 print("Client disconnected")
-                break
+                return None
 
             nick = raw_data.decode("utf-8")
 
@@ -45,9 +55,10 @@ class Server():
                 conn.send("ERROR|Nick is already used".encode("utf-8"))
                 continue
 
-            self.clients[nick] = conn
-            self.sockets[conn] = nick
-            break
+            return nick
+
+    def chat_loop(self,conn,nick):
+        pass
 
     def route_message(self):
         pass
