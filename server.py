@@ -30,25 +30,24 @@ class Server():
     def handle_client(self,conn,address):
         while True:
             raw_data = conn.recv(1024)
-            text = raw_data.decode("utf-8")
 
-            if text == "":
-                raw_error = "ERROR|Nick is empty"
-                encoded_error = raw_error.encode("utf-8")
-                conn.send(encoded_error)
-                continue
-            if text in self.clients.keys():
-                raw_error = "ERROR|Nick is already used"
-                encoded_error = raw_error.encode("utf-8")
-                conn.send(encoded_error)
+            if not raw_data:
+                print("Client disconnected")
+                break
+
+            nick = raw_data.decode("utf-8")
+
+            if not nick:
+                conn.send("ERROR|Nick is empty".encode("utf-8"))
                 continue
 
-            self.clients[text] = conn
-            self.sockets[conn] = text
+            if nick in self.clients.keys():
+                conn.send("ERROR|Nick is already used".encode("utf-8"))
+                continue
+
+            self.clients[nick] = conn
+            self.sockets[conn] = nick
             break
-
-
-
 
     def route_message(self):
         pass
