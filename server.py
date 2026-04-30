@@ -75,7 +75,7 @@ class Server():
             parts = message.split("|", maxsplit=2)
 
             if len(parts) < 3:
-                print("Invalid message format")
+                print("ERROR|Invalid message format")
                 continue
 
             cmd = parts[0]
@@ -83,7 +83,7 @@ class Server():
             msg = parts[2]
 
             if not cmd or not target or not msg:
-                print("Invalid message format")
+                print("ERROR|Invalid message format")
                 continue
 
             self.route_message(nick,conn,parts)
@@ -95,8 +95,45 @@ class Server():
         conn.close()
 
     def route_message(self,nick,conn,parts):
-        pass
-    def send_private(self):
-        pass
-    def send_room(self):
+        cmd = parts[0]
+        target = parts[1]
+        msg = parts[2]
+
+        if cmd == "PM":
+            self.send_private(nick,conn,cmd,target,msg)
+        elif cmd == "ROOM":
+            self.send_room(nick,conn,parts)
+        else:
+            print("ERROR|Invalid message format")
+            return
+
+    def message_formatting(self,sender_nick,cmd,target,msg):
+        if cmd == "PM":
+            message = cmd + "|" + sender_nick + "|" + target + "|" + msg
+        elif cmd == "ROOM":
+            message = cmd + "|" + target + "|" + sender_nick + "|" + msg
+        else:
+            return None
+
+        return message
+
+
+    def send_private(self,sender_nick,sender_conn,cmd,target,msg):
+
+        if target in self.clients.keys():
+            target_conn = self.clients[target]
+            complex_message = self.message_formatting(sender_nick,cmd,target,msg)
+            if complex_message is not None:
+                target_conn.send(complex_message.encode("utf-8"))
+            else:
+                print("ERROR|Invalid message format")
+                sender_conn.send("ERROR|Invalid message format".encode("utf-8"))
+                return
+
+        else:
+            sender_conn.send("ERROR|Target does not exist".encode("utf-8"))
+            return
+
+
+    def send_room(self,nick,conn,parts):
         pass
