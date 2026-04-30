@@ -32,7 +32,7 @@ class Server():
 
         if nick is None:
             return
-        
+
         self.clients[nick] = conn
         self.sockets[conn] = nick
         self.chat_loop(conn,nick)
@@ -58,9 +58,43 @@ class Server():
             return nick
 
     def chat_loop(self,conn,nick):
-        pass
+        while True:
+            try:
+                raw_data = conn.recv(1024)
+            except ConnectionResetError:
+                self.clean_up(conn,nick)
+                return
 
-    def route_message(self):
+
+            if not raw_data:
+                print("Client disconnected")
+                self.clean_up(conn,nick)
+                return
+
+            message = raw_data.decode("utf-8")
+            parts = message.split("|", maxsplit=2)
+
+            if len(parts) < 3:
+                print("Invalid message format")
+                continue
+
+            cmd = parts[0]
+            target = parts[1]
+            msg = parts[2]
+
+            if not cmd or not target or not msg:
+                print("Invalid message format")
+                continue
+
+            self.route_message(nick,conn,parts)
+
+
+    def clean_up(self,conn,nick):
+        self.clients.pop(nick,None)
+        self.sockets.pop(conn,None)
+        conn.close()
+
+    def route_message(self,nick,conn,parts):
         pass
     def send_private(self):
         pass
