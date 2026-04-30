@@ -135,5 +135,26 @@ class Server():
             return
 
 
-    def send_room(self,nick,conn,parts):
-        pass
+    def send_room(self,sender_nick,sender_conn,cmd,target,msg):
+        complex_message = self.message_formatting(sender_nick,cmd,target,msg)
+
+        if complex_message is None:
+            print("ERROR|Invalid message format")
+            sender_conn.send("ERROR|Invalid message format".encode("utf-8"))
+            return
+
+        if target in self.rooms.keys():
+            for user in self.rooms[target]:
+                if user == sender_nick:
+                    continue
+                if user not in self.clients.keys():
+                    continue
+
+
+                target_conn = self.clients[user]
+                target_conn.send(complex_message.encode("utf-8"))
+
+        else:
+            sender_conn.send("ERROR|Target does not exist".encode("utf-8"))
+            return
+
