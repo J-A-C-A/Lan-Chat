@@ -72,24 +72,38 @@ class Server():
                 return
 
             message = raw_data.decode("utf-8")
-            parts = message.split("|", maxsplit=2)
 
-            if len(parts) < 3:
-                print("ERROR|Invalid message format")
-                continue
+            if message.startswith("/"):
+                self.command_handler(nick,conn,message)
+            else:
+                parts = message.split("|", maxsplit=2)
+                if len(parts) < 3:
+                    print("ERROR|Invalid message format")
+                    continue
 
-            cmd = parts[0]
-            target = parts[1]
-            msg = parts[2]
+                cmd = parts[0]
+                target = parts[1]
+                msg = parts[2]
 
-            if not cmd or not target or not msg:
-                print("ERROR|Invalid message format")
-                continue
+                if not cmd or not target or not msg:
+                    print("ERROR|Invalid message format")
+                    continue
 
-            self.route_message(nick,conn,cmd,target,msg)
+                self.route_message(nick, conn, cmd, target, msg)
+
 
 
     def clean_up(self,conn,nick):
+        rooms_to_clean = []
+        for room in self.rooms.keys():
+            if nick in self.rooms[room]:
+                rooms_to_clean.append(room)
+
+        for room in rooms_to_clean:
+            self.rooms[room].remove(nick)
+            if len(self.rooms[room]) == 0:
+                self.rooms.pop(room)
+
         self.clients.pop(nick,None)
         self.sockets.pop(conn,None)
         conn.close()
@@ -177,5 +191,39 @@ class Server():
         else:
             conn.send("ERROR|Room does not exist".encode("utf-8"))
 
+    def command_handler(self,nick,conn,msg):
+        command = msg.split(" ",maxsplit=1)
 
+        if command[0] == "/join" and len(command) > 1:
+            self.join_room(conn,nick,command[1])
+        elif command[0] == "/leave" and len(command) > 1:
+            self.leave_room(conn,nick,command[1])
+        elif command[0] == "/users":
+            users = list(self.clients.keys())
+
+            if self.clients:
+                answer = "USERS" + "|" + ",".join(users)
+            else:
+                answer = "USERS" + "|" + "NONE"
+
+            conn.send(answer.encode("utf-8"))
+        elif command[0] == "/rooms":
+
+            if self.rooms:
+                parts = []
+
+                for room, users in self.rooms.items():
+                    users_str = ",".join(users)
+                    parts.append(f"{room}:{users_str}")
+
+                answer = "ROOMS" + "|" + ";".join(parts)
+            else:
+                answer = "ROOMS" + "|" + "NONE"
+
+            conn.send(answer.encode("utf-8"))
+
+        elif command[0] == "/quit":
+            self.clean_up(conn,nick)
+        else:
+            conn.send("ERROR|Invalid command".encode("utf-8"))
 
