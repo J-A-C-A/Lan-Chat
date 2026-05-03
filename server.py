@@ -86,7 +86,7 @@ class Server():
                 print("ERROR|Invalid message format")
                 continue
 
-            self.route_message(nick,conn,parts)
+            self.route_message(nick,conn,cmd,target,msg)
 
 
     def clean_up(self,conn,nick):
@@ -94,15 +94,12 @@ class Server():
         self.sockets.pop(conn,None)
         conn.close()
 
-    def route_message(self,nick,conn,parts):
-        cmd = parts[0]
-        target = parts[1]
-        msg = parts[2]
+    def route_message(self,nick,conn,cmd,target,msg):
 
         if cmd == "PM":
             self.send_private(nick,conn,cmd,target,msg)
         elif cmd == "ROOM":
-            self.send_room(nick,conn,parts)
+            self.send_room(nick,conn,cmd,target,msg)
         else:
             print("ERROR|Invalid message format")
             return
@@ -157,4 +154,28 @@ class Server():
         else:
             sender_conn.send("ERROR|Target does not exist".encode("utf-8"))
             return
+
+    def join_room(self,nick,conn,name):
+
+        if name in self.rooms.keys():
+            if nick in self.rooms[name]:
+                pass
+            else:
+                self.rooms[name].append(nick)
+        else:
+            self.rooms[name] = [nick]
+
+    def leave_room(self,nick,conn,name):
+        if name in self.rooms.keys():
+
+            if nick in self.rooms[name]:
+                self.rooms[name].remove(nick)
+                if len(self.rooms[name]) == 0:
+                    self.rooms.pop(name)
+            else:
+                    conn.send("ERROR|User is not in the room".encode("utf-8"))
+        else:
+            conn.send("ERROR|Room does not exist".encode("utf-8"))
+
+
 
