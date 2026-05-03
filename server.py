@@ -55,6 +55,7 @@ class Server():
                 conn.send("ERROR|Nick is already used".encode("utf-8"))
                 continue
 
+            conn.send("LOGIN|OK".encode("utf-8"))
             return nick
 
     def chat_loop(self,conn,nick):
