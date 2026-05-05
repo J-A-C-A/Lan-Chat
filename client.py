@@ -8,7 +8,7 @@ class Client():
         self.client_socket = soc.socket(soc.AF_INET, soc.SOCK_STREAM)
         self.nick = ""
         self.connected = False
-        self.running = True
+        self.running = False
         self.logged_in = False
 
     def connect(self):
@@ -30,7 +30,7 @@ class Client():
                 server_answer = self.client_socket.recv(1024).decode("utf-8")
                 if server_answer == "LOGIN|OK":
                     self.logged_in = True
-                elif server_answer == "ERROR|Nick is empty":
+                elif server_answer == "EROR|Nick is empty":
                     print("ERROR|Nick is empty")
                     continue
                 elif server_answer == "ERROR|Nick is already used":
@@ -46,11 +46,50 @@ class Client():
                 print("ERROR")
                 break
 
-
-
+    def start(self):
+        if self.logged_in:
+            thread = thr.Thread(target=self.receive_loop)
+            thread.daemon = True
+            thread.start()
+            self.running = True
+            self.send_loop()
+        else:
+            print("ERROR|User is not logged in")
 
     def send_loop(self):
-        pass
+        while self.running:
+            try:
+                message = input("Enter your message: ")
+                if message == "/quit":
+                    self.running = False
+                    self.client_socket.send("/quit".encode("utf-8"))
+                    self.client_socket.close()
+                    break
+                elif not message.strip():
+                    continue
+                else:
+                    self.client_socket.send(message.encode("utf-8"))
+            except soc.error:
+                print("ERROR|Connection lost")
+                self.running = False
+                self.client_socket.close()
+                break
+
 
     def receive_loop(self):
-        pass
+        while self.running:
+            try:
+                raw_data = self.client_socket.recv(1024)
+                if not raw_data:
+                    self.client_socket.close()
+                    self.running = False
+                    break
+                else:
+                    message = raw_data.decode("utf-8")
+                    print(message)
+            except soc.error:
+                print("ERROR|Connection lost")
+                self.client_socket.close()
+                self.running = False
+                break
+
