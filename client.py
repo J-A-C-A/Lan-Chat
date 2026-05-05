@@ -48,6 +48,7 @@ class Client():
 
     def start(self):
         if self.logged_in:
+            self.show_help()
             thread = thr.Thread(target=self.receive_loop)
             thread.daemon = True
             thread.start()
@@ -65,6 +66,8 @@ class Client():
                     self.client_socket.send("/quit".encode("utf-8"))
                     self.client_socket.close()
                     break
+                elif message == "/help":
+                    self.show_help()
                 elif not message.strip():
                     continue
                 else:
@@ -93,3 +96,17 @@ class Client():
                 self.running = False
                 break
 
+    def show_help(self):
+        print("====INSTRUCTIONS====")
+        print("Messages:\n")
+        print("Personal message format:")
+        print("PM|receiver_nick|text\n")
+        print("Group message format:")
+        print("ROOM|room_name|text\n")
+        print("Server commands:")
+        print("/users")
+        print("/rooms")
+        print("/join room_name")
+        print("/leave room_name")
+        print("/help")
+        print("/quit")
