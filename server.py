@@ -8,7 +8,7 @@ import re
 class Server():
     def __init__(self):
         self.ip_address = "127.0.0.1"
-        self.server_port = 8888
+        self.server_port = 5000
         self.server_socket = soc.socket(soc.AF_INET, soc.SOCK_STREAM)
         self.clients = {}
         self.sockets = {}
@@ -16,6 +16,7 @@ class Server():
 
 
     def start(self):
+        self.server_socket.setsockopt(soc.SOL_SOCKET, soc.SO_REUSEADDR, 1)
         self.server_socket.bind((self.ip_address, self.server_port))
         self.server_socket.listen(5)
         self.accept_connections()
@@ -73,6 +74,7 @@ class Server():
                 return
 
             message = raw_data.decode("utf-8")
+            print("DEBUG RAW:", repr(message))
 
             if message.startswith("/"):
                 self.command_handler(nick,conn,message)
@@ -131,12 +133,14 @@ class Server():
 
 
     def send_private(self,sender_nick,sender_conn,cmd,target,msg):
-
+        print("TARGET:", target)
+        print("Clients:", self.clients.keys())
         if target in self.clients.keys():
             target_conn = self.clients[target]
+            print("SENDING TO: ", target_conn)
             complex_message = self.message_formatting(sender_nick,cmd,target,msg)
             if complex_message is not None:
-                target_conn.send(complex_message.encode("utf-8"))
+                target_conn.send((complex_message + "\n").encode("utf-8"))
             else:
                 print("ERROR|Invalid message format")
                 sender_conn.send("ERROR|Invalid message format".encode("utf-8"))
@@ -164,7 +168,7 @@ class Server():
 
 
                 target_conn = self.clients[user]
-                target_conn.send(complex_message.encode("utf-8"))
+                target_conn.send((complex_message + "\n").encode("utf-8"))
 
         else:
             sender_conn.send("ERROR|Target does not exist".encode("utf-8"))
@@ -174,17 +178,21 @@ class Server():
 
         if name in self.rooms.keys():
             if nick in self.rooms[name]:
-                pass
+                conn.send("ERROR|User is already in the room".encode("utf-8"))
+
             else:
                 self.rooms[name].append(nick)
+                conn.send(f"LOG|You are now in room: {name}".encode("utf-8"))
         else:
             self.rooms[name] = [nick]
+            conn.send(f"LOG|You are now in room: {name}".encode("utf-8"))
 
     def leave_room(self,nick,conn,name):
         if name in self.rooms.keys():
 
             if nick in self.rooms[name]:
                 self.rooms[name].remove(nick)
+                conn.send(f"LOG|You left room: {name}".encode("utf-8"))
                 if len(self.rooms[name]) == 0:
                     self.rooms.pop(name)
             else:
@@ -196,9 +204,9 @@ class Server():
         command = msg.split(" ",maxsplit=1)
 
         if command[0] == "/join" and len(command) > 1:
-            self.join_room(conn,nick,command[1])
+            self.join_room(nick=nick,conn=conn,name=command[1])
         elif command[0] == "/leave" and len(command) > 1:
-            self.leave_room(conn,nick,command[1])
+            self.leave_room(nick=nick,conn=conn,name=command[1])
         elif command[0] == "/users":
             users = list(self.clients.keys())
 
@@ -228,3 +236,6 @@ class Server():
         else:
             conn.send("ERROR|Invalid command".encode("utf-8"))
 
+if __name__ == "__main__":
+    server = Server()
+    server.start()

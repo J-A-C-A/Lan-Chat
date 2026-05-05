@@ -4,7 +4,7 @@ import threading as thr
 class Client():
     def __init__(self):
         self.server_ip = "127.0.0.1"
-        self.server_port = 8888
+        self.server_port = 5000
         self.client_socket = soc.socket(soc.AF_INET, soc.SOCK_STREAM)
         self.nick = ""
         self.connected = False
@@ -30,7 +30,7 @@ class Client():
                 server_answer = self.client_socket.recv(1024).decode("utf-8")
                 if server_answer == "LOGIN|OK":
                     self.logged_in = True
-                elif server_answer == "EROR|Nick is empty":
+                elif server_answer == "ERROR|Nick is empty":
                     print("ERROR|Nick is empty")
                     continue
                 elif server_answer == "ERROR|Nick is already used":
@@ -38,6 +38,8 @@ class Client():
                     continue
                 else:
                     print("ERROR|Unexpected answer from server")
+                    print(server_answer)
+                    continue
 
             except soc.error:
                 self.client_socket.close()
@@ -51,8 +53,8 @@ class Client():
             self.show_help()
             thread = thr.Thread(target=self.receive_loop)
             thread.daemon = True
-            thread.start()
             self.running = True
+            thread.start()
             self.send_loop()
         else:
             print("ERROR|User is not logged in")
@@ -80,6 +82,7 @@ class Client():
 
 
     def receive_loop(self):
+        print("RECEIVE LOOP STARTED")
         while self.running:
             try:
                 raw_data = self.client_socket.recv(1024)
@@ -89,7 +92,24 @@ class Client():
                     break
                 else:
                     message = raw_data.decode("utf-8")
-                    print(message)
+                    if message.startswith("PM|"):
+                        parts = message.split("|", maxsplit=3)
+                        if len(parts) >= 4:
+                            sender_nick = parts[1]
+                            content = parts[3]
+                            formatted_message = f"[{sender_nick} -> you]: {content}"
+                            print(formatted_message)
+                    elif message.startswith("ROOM|"):
+                        parts = message.split("|", maxsplit=3)
+                        if len(parts) >= 4:
+                            room_name = parts[1]
+                            sender_nick = parts[2]
+                            content = parts[3]
+                            formatted_message = f"[#{room_name}|{sender_nick}]: {content}"
+                            print(formatted_message)
+                    else:
+                        print(message)
+
             except soc.error:
                 print("ERROR|Connection lost")
                 self.client_socket.close()
@@ -110,3 +130,8 @@ class Client():
         print("/leave room_name")
         print("/help")
         print("/quit")
+
+if __name__ == "__main__":
+    client = Client()
+    client.connect()
+    client.start()
