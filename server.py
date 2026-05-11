@@ -13,6 +13,9 @@ class Server():
         self.clients = {}
         self.sockets = {}
         self.rooms = {}
+        self.clients_lock = thr.Lock()
+        self.sockets_lock = thr.Lock()
+        self.rooms_lock = thr.Lock()
 
 
     def start(self):
@@ -34,8 +37,11 @@ class Server():
         if nick is None:
             return
 
-        self.clients[nick] = conn
-        self.sockets[conn] = nick
+        with self.clients_lock:
+            self.clients[nick] = conn
+        with self.sockets_lock:
+            self.sockets[conn] = nick
+
         self.chat_loop(conn,nick)
 
     def login_loop(self,conn):
@@ -52,9 +58,10 @@ class Server():
                 conn.send("ERROR|Nick is empty".encode("utf-8"))
                 continue
 
-            if nick in self.clients.keys():
-                conn.send("ERROR|Nick is already used".encode("utf-8"))
-                continue
+            with self.clients_lock:
+                if nick in self.clients.keys():
+                    conn.send("ERROR|Nick is already used".encode("utf-8"))
+                    continue
 
             conn.send("LOGIN|OK".encode("utf-8"))
             return nick
@@ -66,7 +73,6 @@ class Server():
             except ConnectionResetError:
                 self.clean_up(conn,nick)
                 return
-
 
             if not raw_data:
                 print("Client disconnected")
@@ -98,17 +104,21 @@ class Server():
 
     def clean_up(self,conn,nick):
         rooms_to_clean = []
-        for room in self.rooms.keys():
-            if nick in self.rooms[room]:
-                rooms_to_clean.append(room)
+        with self.rooms_lock:
+            rooms_with_users = list(self.rooms.items())
+            for room, users in rooms_with_users:
+                if nick in users:
+                    rooms_to_clean.append(room)
+            for room in rooms_to_clean:
+                self.rooms[room].remove(nick)
+                if len(self.rooms[room]) == 0:
+                    self.rooms.pop(room)
 
-        for room in rooms_to_clean:
-            self.rooms[room].remove(nick)
-            if len(self.rooms[room]) == 0:
-                self.rooms.pop(room)
+        with self.clients_lock:
+            self.clients.pop(nick,None)
+        with self.sockets_lock:
+            self.sockets.pop(conn,None)
 
-        self.clients.pop(nick,None)
-        self.sockets.pop(conn,None)
         conn.close()
 
     def route_message(self,nick,conn,cmd,target,msg):
@@ -134,17 +144,20 @@ class Server():
 
     def send_private(self,sender_nick,sender_conn,cmd,target,msg):
         print("TARGET:", target)
-        print("Clients:", self.clients.keys())
-        if target in self.clients.keys():
-            target_conn = self.clients[target]
-            print("SENDING TO: ", target_conn)
-            complex_message = self.message_formatting(sender_nick,cmd,target,msg)
-            if complex_message is not None:
-                target_conn.send(complex_message.encode("utf-8"))
-            else:
-                print("ERROR|Invalid message format")
-                sender_conn.send("ERROR|Invalid message format".encode("utf-8"))
-                return
+        with self.clients_lock:
+            print("Clients:", self.clients.keys())
+            target_conn = self.clients.get(target,None)
+
+
+        if target_conn is not None:
+                print("SENDING TO: ", target_conn)
+                complex_message = self.message_formatting(sender_nick,cmd,target,msg)
+                if complex_message is not None:
+                    target_conn.send(complex_message.encode("utf-8"))
+                else:
+                    print("ERROR|Invalid message format")
+                    sender_conn.send("ERROR|Invalid message format".encode("utf-8"))
+                    return
 
         else:
             sender_conn.send("ERROR|Target does not exist".encode("utf-8"))
@@ -159,46 +172,59 @@ class Server():
             sender_conn.send("ERROR|Invalid message format".encode("utf-8"))
             return
 
-        if target in self.rooms.keys():
-            for user in self.rooms[target]:
-                if user == sender_nick:
-                    continue
-                if user not in self.clients.keys():
-                    continue
+        with self.rooms_lock:
+                users_in_room = self.rooms.get(target,None)
 
+        if users_in_room is not None:
+                for user in users_in_room:
+                    if user == sender_nick:
+                        continue
+                    with self.clients_lock:
+                        target_conn = self.clients.get(user,None)
 
-                target_conn = self.clients[user]
-                target_conn.send(complex_message.encode("utf-8"))
-
+                    if target_conn is  None:
+                        continue
+                    target_conn.send(complex_message.encode("utf-8"))
         else:
             sender_conn.send("ERROR|Target does not exist".encode("utf-8"))
             return
 
     def join_room(self,nick,conn,name):
+        with self.rooms_lock:
+            if name in self.rooms.keys():
+                if nick in self.rooms[name]:
+                    conn.send("ERROR|User is already in the room".encode("utf-8"))
 
-        if name in self.rooms.keys():
-            if nick in self.rooms[name]:
-                conn.send("ERROR|User is already in the room".encode("utf-8"))
-
+                else:
+                    self.rooms[name].append(nick)
+                    conn.send(f"LOG|You are now in room: {name}".encode("utf-8"))
             else:
-                self.rooms[name].append(nick)
+                self.rooms[name] = [nick]
                 conn.send(f"LOG|You are now in room: {name}".encode("utf-8"))
-        else:
-            self.rooms[name] = [nick]
-            conn.send(f"LOG|You are now in room: {name}".encode("utf-8"))
 
     def leave_room(self,nick,conn,name):
-        if name in self.rooms.keys():
+        status = ""
+        with self.rooms_lock:
+            if name in self.rooms.keys():
+                if nick in self.rooms[name]:
 
-            if nick in self.rooms[name]:
-                self.rooms[name].remove(nick)
-                conn.send(f"LOG|You left room: {name}".encode("utf-8"))
-                if len(self.rooms[name]) == 0:
-                    self.rooms.pop(name)
+                        self.rooms[name].remove(nick)
+                        status = "Left_room"
+                        if len(self.rooms[name]) == 0:
+                            self.rooms.pop(name)
+                else:
+                        status = "Not_in_room"
+
             else:
-                    conn.send("ERROR|User is not in the room".encode("utf-8"))
-        else:
-            conn.send("ERROR|Room does not exist".encode("utf-8"))
+                status = "Room_not_found"
+
+        if status == "Left_room":
+            conn.send(f"LOG|You left room: {name}".encode("utf-8"))
+        elif status ==  "Not_in_room":
+            conn.send("ERROR|User is not in the room".encode("utf-8"))
+        elif status == "Room_not_found":
+            conn.send("ERROR|Room does not exists".encode("utf-8"))
+
 
     def command_handler(self,nick,conn,msg):
         command = msg.split(" ",maxsplit=1)
@@ -208,7 +234,8 @@ class Server():
         elif command[0] == "/leave" and len(command) > 1:
             self.leave_room(nick=nick,conn=conn,name=command[1])
         elif command[0] == "/users":
-            users = list(self.clients.keys())
+            with self.clients_lock:
+                users = list(self.clients.keys())
 
             if self.clients:
                 answer = "USERS" + "|" + ",".join(users)
@@ -217,11 +244,12 @@ class Server():
 
             conn.send(answer.encode("utf-8"))
         elif command[0] == "/rooms":
+            with self.rooms_lock:
+                rooms_with_users = list(self.rooms.items())
 
-            if self.rooms:
+            if rooms_with_users:
                 parts = []
-
-                for room, users in self.rooms.items():
+                for room, users in rooms_with_users:
                     users_str = ",".join(users)
                     parts.append(f"{room}:{users_str}")
 
