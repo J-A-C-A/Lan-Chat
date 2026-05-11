@@ -1,6 +1,6 @@
 import socket as soc
 import threading as thr
-
+import sys
 class Client():
     def __init__(self):
         self.server_ip = "127.0.0.1"
@@ -10,6 +10,7 @@ class Client():
         self.connected = False
         self.running = False
         self.logged_in = False
+        self.print_lock = thr.Lock()
 
     def connect(self):
         try:
@@ -62,7 +63,10 @@ class Client():
     def send_loop(self):
         while self.running:
             try:
-                message = input("Enter your message: ")
+                with self.print_lock:
+                    print("Enter your message: ", end="",flush=True)
+
+                message = input()
                 if message == "/quit":
                     self.running = False
                     self.client_socket.send("/quit".encode("utf-8"))
@@ -83,6 +87,7 @@ class Client():
 
     def receive_loop(self):
         print("RECEIVE LOOP STARTED")
+        # TODO: poprawa wyświetlania się wszystkich komunikatów w konsoli
         while self.running:
             try:
                 raw_data = self.client_socket.recv(1024)
@@ -98,7 +103,9 @@ class Client():
                             sender_nick = parts[1]
                             content = parts[3]
                             formatted_message = f"[{sender_nick} -> you]: {content}"
-                            print(formatted_message)
+                            with self.print_lock:
+                                sys.stdout.write("\r" + " " * 120 + "\r")
+                                print(formatted_message)
                     elif message.startswith("ROOM|"):
                         parts = message.split("|", maxsplit=3)
                         if len(parts) >= 4:
@@ -106,9 +113,13 @@ class Client():
                             sender_nick = parts[2]
                             content = parts[3]
                             formatted_message = f"[#{room_name}|{sender_nick}]: {content}"
-                            print(formatted_message)
+                            with self.print_lock:
+                                sys.stdout.write("\r" + " " * 120 + "\r")
+                                print(formatted_message)
                     else:
-                        print(message)
+                        with self.print_lock:
+                            sys.stdout.write("\r" + " " * 120 + "\r")
+                            print(message)
 
             except soc.error:
                 print("ERROR|Connection lost")

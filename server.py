@@ -140,7 +140,7 @@ class Server():
             print("SENDING TO: ", target_conn)
             complex_message = self.message_formatting(sender_nick,cmd,target,msg)
             if complex_message is not None:
-                target_conn.send((complex_message + "\n").encode("utf-8"))
+                target_conn.send(complex_message.encode("utf-8"))
             else:
                 print("ERROR|Invalid message format")
                 sender_conn.send("ERROR|Invalid message format".encode("utf-8"))
@@ -168,7 +168,7 @@ class Server():
 
 
                 target_conn = self.clients[user]
-                target_conn.send((complex_message + "\n").encode("utf-8"))
+                target_conn.send(complex_message.encode("utf-8"))
 
         else:
             sender_conn.send("ERROR|Target does not exist".encode("utf-8"))
