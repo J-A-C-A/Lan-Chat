@@ -11,6 +11,7 @@ class Client():
         self.running = False
         self.logged_in = False
         self.print_lock = thr.Lock()
+        self.buffer = b""
 
     def connect(self):
         try:
@@ -28,7 +29,7 @@ class Client():
             try:
                 self.nick = input("Enter your nickname: ")
                 self.client_socket.send(self.nick.encode("utf-8"))
-                server_answer = self.client_socket.recv(1024).decode("utf-8")
+                server_answer = self.receive_message()
                 if server_answer == "LOGIN|OK":
                     self.logged_in = True
                 elif server_answer == "ERROR|Nick is empty":
@@ -87,16 +88,14 @@ class Client():
 
     def receive_loop(self):
         print("RECEIVE LOOP STARTED")
-        # TODO: poprawa wyświetlania się wszystkich komunikatów w konsoli
         while self.running:
             try:
-                raw_data = self.client_socket.recv(1024)
-                if not raw_data:
+                message = self.receive_message()
+                if not message:
                     self.client_socket.close()
                     self.running = False
                     break
                 else:
-                    message = raw_data.decode("utf-8")
                     if message.startswith("PM|"):
                         parts = message.split("|", maxsplit=3)
                         if len(parts) >= 4:
@@ -141,6 +140,22 @@ class Client():
         print("/leave room_name")
         print("/help")
         print("/quit")
+
+    def receive_message(self):
+        while True:
+            chunk = self.client_socket.recv(1024)
+            self.buffer += chunk
+
+            if not self.buffer:
+                return None
+
+            parts = self.buffer.split(b"\n")
+
+            if len(parts) >= 2:
+                message = parts[0]
+                self.buffer = parts[1]
+                return message.decode("utf-8")
+
 
 if __name__ == "__main__":
     client = Client()

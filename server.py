@@ -1,8 +1,6 @@
 import socket as soc
 import threading as thr
-import datetime as dt
-import re
-
+from collections import deque
 
 
 class Server():
@@ -11,10 +9,9 @@ class Server():
         self.server_port = 5000
         self.server_socket = soc.socket(soc.AF_INET, soc.SOCK_STREAM)
         self.clients = {}
-        self.sockets = {}
         self.rooms = {}
+        self.buffers = {}
         self.clients_lock = thr.Lock()
-        self.sockets_lock = thr.Lock()
         self.rooms_lock = thr.Lock()
 
 
@@ -37,53 +34,56 @@ class Server():
         if nick is None:
             return
 
-        with self.clients_lock:
-            self.clients[nick] = conn
-        with self.sockets_lock:
-            self.sockets[conn] = nick
-
         self.chat_loop(conn,nick)
 
     def login_loop(self,conn):
         while True:
-            raw_data = conn.recv(1024)
+            err_nick_used = False
+            nick = self.receive_message(conn)
 
-            if not raw_data:
+            if nick is None:
                 print("Client disconnected")
                 return None
 
-            nick = raw_data.decode("utf-8")
-
-            if not nick:
-                conn.send("ERROR|Nick is empty".encode("utf-8"))
+            if nick == "":
+                self.send_message(conn,"ERROR|Nick is empty")
                 continue
 
             with self.clients_lock:
                 if nick in self.clients.keys():
-                    conn.send("ERROR|Nick is already used".encode("utf-8"))
-                    continue
+                    err_nick_used = True
+                else:
+                    self.clients[nick] = conn
 
-            conn.send("LOGIN|OK".encode("utf-8"))
-            return nick
+            if err_nick_used:
+                self.send_message(conn,"ERROR|Nick is already used")
+                continue
+            else:
+                self.send_message(conn,"LOGIN|OK")
+                return nick
 
     def chat_loop(self,conn,nick):
         while True:
             try:
-                raw_data = conn.recv(1024)
+                message = self.receive_message(conn)
             except ConnectionResetError:
                 self.clean_up(conn,nick)
                 return
 
-            if not raw_data:
+            if message is None:
                 print("Client disconnected")
                 self.clean_up(conn,nick)
                 return
+            elif message == "":
+                self.send_message(conn, "ERROR|Message is empty")
+                continue
 
-            message = raw_data.decode("utf-8")
             print("DEBUG RAW:", repr(message))
 
             if message.startswith("/"):
-                self.command_handler(nick,conn,message)
+                result = self.command_handler(nick,conn,message)
+                if result == "QUIT":
+                    return
             else:
                 parts = message.split("|", maxsplit=2)
                 if len(parts) < 3:
@@ -116,8 +116,7 @@ class Server():
 
         with self.clients_lock:
             self.clients.pop(nick,None)
-        with self.sockets_lock:
-            self.sockets.pop(conn,None)
+            self.buffers.pop(conn, None)
 
         conn.close()
 
@@ -153,14 +152,17 @@ class Server():
                 print("SENDING TO: ", target_conn)
                 complex_message = self.message_formatting(sender_nick,cmd,target,msg)
                 if complex_message is not None:
-                    target_conn.send(complex_message.encode("utf-8"))
+                    try:
+                        self.send_message(target_conn,complex_message)
+                    except (BrokenPipeError,ConnectionResetError):
+                        self.send_message(sender_conn,"ERROR|Target is unavailable")
+
                 else:
                     print("ERROR|Invalid message format")
-                    sender_conn.send("ERROR|Invalid message format".encode("utf-8"))
+                    self.send_message(sender_conn,"ERROR|Invalid message format")
                     return
-
         else:
-            sender_conn.send("ERROR|Target does not exist".encode("utf-8"))
+            self.send_message(sender_conn,"ERROR|Target does not exist")
             return
 
 
@@ -169,11 +171,16 @@ class Server():
 
         if complex_message is None:
             print("ERROR|Invalid message format")
-            sender_conn.send("ERROR|Invalid message format".encode("utf-8"))
+            self.send_message(sender_conn,"ERROR|Invalid message format")
             return
 
         with self.rooms_lock:
-                users_in_room = self.rooms.get(target,None)
+                result = self.rooms.get(target,None)
+                if result is not None:
+                    users_in_room = list(result)
+                else:
+                    users_in_room = None
+
 
         if users_in_room is not None:
                 for user in users_in_room:
@@ -184,23 +191,28 @@ class Server():
 
                     if target_conn is  None:
                         continue
-                    target_conn.send(complex_message.encode("utf-8"))
+
+                    try:
+                        self.send_message(target_conn,complex_message)
+                    except (BrokenPipeError,ConnectionResetError):
+                        print(f"ERROR|User: {user} is unavailable")
+                        continue
         else:
-            sender_conn.send("ERROR|Target does not exist".encode("utf-8"))
+            self.send_message(sender_conn,"ERROR|Target does not exist")
             return
 
     def join_room(self,nick,conn,name):
         with self.rooms_lock:
             if name in self.rooms.keys():
                 if nick in self.rooms[name]:
-                    conn.send("ERROR|User is already in the room".encode("utf-8"))
+                    self.send_message(conn,"ERROR|User is already in the room")
 
                 else:
                     self.rooms[name].append(nick)
-                    conn.send(f"LOG|You are now in room: {name}".encode("utf-8"))
+                    self.send_message(conn,f"LOG|You are now in room: {name}")
             else:
                 self.rooms[name] = [nick]
-                conn.send(f"LOG|You are now in room: {name}".encode("utf-8"))
+                self.send_message(conn,f"LOG|You are now in room: {name}")
 
     def leave_room(self,nick,conn,name):
         status = ""
@@ -219,11 +231,11 @@ class Server():
                 status = "Room_not_found"
 
         if status == "Left_room":
-            conn.send(f"LOG|You left room: {name}".encode("utf-8"))
+            self.send_message(conn,f"LOG|You left room: {name}")
         elif status ==  "Not_in_room":
-            conn.send("ERROR|User is not in the room".encode("utf-8"))
+            self.send_message(conn,"ERROR|User is not in the room")
         elif status == "Room_not_found":
-            conn.send("ERROR|Room does not exists".encode("utf-8"))
+            self.send_message(conn,"ERROR|Room does not exist")
 
 
     def command_handler(self,nick,conn,msg):
@@ -241,8 +253,7 @@ class Server():
                 answer = "USERS" + "|" + ",".join(users)
             else:
                 answer = "USERS" + "|" + "NONE"
-
-            conn.send(answer.encode("utf-8"))
+            self.send_message(conn,answer)
         elif command[0] == "/rooms":
             with self.rooms_lock:
                 rooms_with_users = list(self.rooms.items())
@@ -256,13 +267,36 @@ class Server():
                 answer = "ROOMS" + "|" + ";".join(parts)
             else:
                 answer = "ROOMS" + "|" + "NONE"
-
-            conn.send(answer.encode("utf-8"))
+            self.send_message(conn,answer)
 
         elif command[0] == "/quit":
             self.clean_up(conn,nick)
+            return "QUIT"
         else:
-            conn.send("ERROR|Invalid command".encode("utf-8"))
+            self.send_message(conn,"ERROR|Invalid command")
+
+
+    def send_message(self,conn,message):
+        message += "\n"
+        msg_to_send = message.encode("utf-8")
+        conn.send(msg_to_send)
+
+    def receive_message(self,conn):
+        if conn not in self.buffers:
+            self.buffers[conn] = b""
+        while True:
+            chunk = conn.recv(1024)
+            self.buffers[conn] += chunk
+
+            if not self.buffers[conn]:
+                return None
+
+            parts = self.buffers[conn].split(b"\n")
+            if len(parts) >= 2:
+                message = parts[0]
+                self.buffers[conn] = parts[1]
+                return message.decode("utf-8")
+
 
 if __name__ == "__main__":
     server = Server()
