@@ -28,7 +28,7 @@ class Client():
         while not self.logged_in:
             try:
                 self.nick = input("Enter your nickname: ")
-                self.client_socket.send(self.nick.encode("utf-8"))
+                self.send_message(self.nick)
                 server_answer = self.receive_message()
                 if server_answer == "LOGIN|OK":
                     self.logged_in = True
@@ -70,7 +70,7 @@ class Client():
                 message = input()
                 if message == "/quit":
                     self.running = False
-                    self.client_socket.send("/quit".encode("utf-8"))
+                    self.send_message("/quit")
                     self.client_socket.close()
                     break
                 elif message == "/help":
@@ -78,7 +78,7 @@ class Client():
                 elif not message.strip():
                     continue
                 else:
-                    self.client_socket.send(message.encode("utf-8"))
+                    self.send_message(message)
             except soc.error:
                 print("ERROR|Connection lost")
                 self.running = False
@@ -153,9 +153,13 @@ class Client():
 
             if len(parts) >= 2:
                 message = parts[0]
-                self.buffer = parts[1]
+                self.buffer = b"\n".join(parts[1:])
                 return message.decode("utf-8")
 
+    def send_message(self,message):
+        message += "\n"
+        msg_to_send = message.encode("utf-8")
+        self.client_socket.send(msg_to_send)
 
 if __name__ == "__main__":
     client = Client()

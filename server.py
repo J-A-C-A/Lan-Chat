@@ -1,7 +1,7 @@
 import socket as soc
 import threading as thr
-from collections import deque
-
+import datetime as dt
+import re
 
 class Server():
     def __init__(self):
@@ -11,8 +11,15 @@ class Server():
         self.clients = {}
         self.rooms = {}
         self.buffers = {}
+        self.message_counters = {}
+        self.message_times_of_reset = {}
+        self.RATE_LIMIT = 5
+        self.RATE_LIMIT_BAN = 10
         self.clients_lock = thr.Lock()
         self.rooms_lock = thr.Lock()
+        self.buffers_lock = thr.Lock()
+        self.rate_limit_lock = thr.Lock()
+        self.send_lock = thr.Lock()
 
 
     def start(self):
@@ -44,10 +51,17 @@ class Server():
             if nick is None:
                 print("Client disconnected")
                 return None
-
-            if nick == "":
+            elif nick == "":
                 self.send_message(conn,"ERROR|Nick is empty")
                 continue
+
+            pattern = r'^[a-zA-Z0-9_\-\.ąęłćńóśźżĄĘŁĆŃÓŚŹŻ]+$'
+            result = re.match(pattern, nick)
+            if  result is None:
+                self.send_message(conn,"ERROR|You have entered an invalid characters")
+                continue
+
+
 
             with self.clients_lock:
                 if nick in self.clients.keys():
@@ -77,6 +91,15 @@ class Server():
             elif message == "":
                 self.send_message(conn, "ERROR|Message is empty")
                 continue
+            else:
+                result = self.check_rate_limit(nick)
+                if result == "BAN":
+                    self.send_message(conn,"LOG|You have been banned for sending too many messages")
+                    self.clean_up(conn,nick)
+                    return
+                elif result == "WARN":
+                    self.send_message(conn,"LOG|You have been warned for sending too many messages")
+
 
             print("DEBUG RAW:", repr(message))
 
@@ -117,6 +140,10 @@ class Server():
         with self.clients_lock:
             self.clients.pop(nick,None)
             self.buffers.pop(conn, None)
+
+        with self.rate_limit_lock:
+            self.message_times_of_reset.pop(nick,None)
+            self.message_counters.pop(nick,None)
 
         conn.close()
 
@@ -202,17 +229,22 @@ class Server():
             return
 
     def join_room(self,nick,conn,name):
+        err_user_already_in_room = False
         with self.rooms_lock:
-            if name in self.rooms.keys():
-                if nick in self.rooms[name]:
-                    self.send_message(conn,"ERROR|User is already in the room")
-
-                else:
-                    self.rooms[name].append(nick)
-                    self.send_message(conn,f"LOG|You are now in room: {name}")
-            else:
+            room = self.rooms.get(name,None)
+            if room is None:
                 self.rooms[name] = [nick]
-                self.send_message(conn,f"LOG|You are now in room: {name}")
+            elif nick in room:
+                err_user_already_in_room = True
+            else:
+                self.rooms[name].append(nick)
+
+
+        if err_user_already_in_room:
+            err_user_already_in_room = False
+            self.send_message(conn, "ERROR|User is already in the room")
+        else:
+            self.send_message(conn, f"LOG|You are now in room: {name}")
 
     def leave_room(self,nick,conn,name):
         status = ""
@@ -279,23 +311,49 @@ class Server():
     def send_message(self,conn,message):
         message += "\n"
         msg_to_send = message.encode("utf-8")
-        conn.send(msg_to_send)
+        with self.send_lock:
+            conn.send(msg_to_send)
 
     def receive_message(self,conn):
-        if conn not in self.buffers:
-            self.buffers[conn] = b""
         while True:
             chunk = conn.recv(1024)
-            self.buffers[conn] += chunk
-
-            if not self.buffers[conn]:
+            if not chunk:
                 return None
 
-            parts = self.buffers[conn].split(b"\n")
-            if len(parts) >= 2:
-                message = parts[0]
-                self.buffers[conn] = parts[1]
-                return message.decode("utf-8")
+            with self.buffers_lock:
+                if conn not in self.buffers:
+                    self.buffers[conn] = b""
+
+                self.buffers[conn] += chunk
+
+                parts = self.buffers[conn].split(b"\n")
+                if len(parts) >= 2:
+                    message = parts[0]
+                    self.buffers[conn] = b"\n".join(parts[1:])
+                    return message.decode("utf-8")
+
+    def check_rate_limit(self,nick):
+        now = dt.datetime.now()
+        with self.rate_limit_lock:
+            if nick not in self.message_counters:
+                self.message_counters[nick] = 0
+                self.message_times_of_reset[nick] = now
+
+            elapsed = (now - self.message_times_of_reset.get(nick,now) ).total_seconds()
+
+            if elapsed >= 1.0:
+                self.message_counters[nick] = 0
+                self.message_times_of_reset[nick] = dt.datetime.now()
+
+            self.message_counters[nick] += 1
+            count = self.message_counters[nick]
+
+        if count >= self.RATE_LIMIT_BAN:
+            return "BAN"
+        elif count  >= self.RATE_LIMIT:
+            return "WARN"
+        else:
+            return "OK"
 
 
 if __name__ == "__main__":
