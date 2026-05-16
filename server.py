@@ -12,9 +12,11 @@ class Server():
         self.rooms = {}
         self.buffers = {}
         self.message_counters = {}
+        self.send_locks = {}
         self.message_times_of_reset = {}
         self.RATE_LIMIT = 5
         self.RATE_LIMIT_BAN = 10
+        self.MAX_BUFFER_SIZE = 4096
         self.clients_lock = thr.Lock()
         self.rooms_lock = thr.Lock()
         self.buffers_lock = thr.Lock()
@@ -31,6 +33,7 @@ class Server():
     def accept_connections(self):
         while True:
             conn, address = self.server_socket.accept()
+            self.send_locks[conn] = thr.Lock()
             thread = thr.Thread(target=self.handle_client, args=(conn,address))
             thread.start()
 
@@ -83,7 +86,10 @@ class Server():
             except ConnectionResetError:
                 self.clean_up(conn,nick)
                 return
-
+            except OverflowError:
+                self.send_message(conn,"ERROR|Buffer overflow, disconnecting")
+                self.clean_up(conn,nick)
+                return
             if message is None:
                 print("Client disconnected")
                 self.clean_up(conn,nick)
@@ -140,6 +146,7 @@ class Server():
         with self.clients_lock:
             self.clients.pop(nick,None)
             self.buffers.pop(conn, None)
+            self.send_locks.pop(conn,None)
 
         with self.rate_limit_lock:
             self.message_times_of_reset.pop(nick,None)
@@ -311,7 +318,7 @@ class Server():
     def send_message(self,conn,message):
         message += "\n"
         msg_to_send = message.encode("utf-8")
-        with self.send_lock:
+        with self.send_locks[conn]:
             conn.send(msg_to_send)
 
     def receive_message(self,conn):
@@ -320,17 +327,23 @@ class Server():
             if not chunk:
                 return None
 
+            message_to_return = None
             with self.buffers_lock:
                 if conn not in self.buffers:
                     self.buffers[conn] = b""
 
                 self.buffers[conn] += chunk
 
+                self.check_buffer_overflow(conn)
                 parts = self.buffers[conn].split(b"\n")
                 if len(parts) >= 2:
                     message = parts[0]
                     self.buffers[conn] = b"\n".join(parts[1:])
-                    return message.decode("utf-8")
+                    message_to_return = message.decode("utf-8")
+
+            if message_to_return is not None:
+                return message_to_return
+
 
     def check_rate_limit(self,nick):
         now = dt.datetime.now()
@@ -354,6 +367,10 @@ class Server():
             return "WARN"
         else:
             return "OK"
+
+    def check_buffer_overflow(self,conn):
+            if len(self.buffers[conn]) > self.MAX_BUFFER_SIZE:
+                raise OverflowError("Buffer overflow")
 
 
 if __name__ == "__main__":
