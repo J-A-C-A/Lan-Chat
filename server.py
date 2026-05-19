@@ -165,10 +165,13 @@ class Server():
             return
 
     def message_formatting(self,sender_nick,cmd,target,msg):
+        now = dt.datetime.now()
+        timestamp = now.strftime("%Y-%m-%d %H:%M")
+
         if cmd == "PM":
-            message = cmd + "|" + sender_nick + "|" + target + "|" + msg
+            message = cmd + "|" + sender_nick + "|" + target + "|" + msg + "|" + timestamp
         elif cmd == "ROOM":
-            message = cmd + "|" + target + "|" + sender_nick + "|" + msg
+            message = cmd + "|" + target + "|" + sender_nick + "|" + msg + "|" + timestamp
         else:
             return None
 

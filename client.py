@@ -97,21 +97,23 @@ class Client():
                     break
                 else:
                     if message.startswith("PM|"):
-                        parts = message.split("|", maxsplit=3)
-                        if len(parts) >= 4:
+                        parts = message.split("|", maxsplit=4)
+                        if len(parts) >= 5:
                             sender_nick = parts[1]
                             content = parts[3]
-                            formatted_message = f"[{sender_nick} -> you]: {content}"
+                            timestamp = parts[4]
+                            formatted_message = f"[{sender_nick} -> you, {timestamp}]: {content}"
                             with self.print_lock:
                                 sys.stdout.write("\r" + " " * 120 + "\r")
                                 print(formatted_message)
                     elif message.startswith("ROOM|"):
-                        parts = message.split("|", maxsplit=3)
-                        if len(parts) >= 4:
+                        parts = message.split("|", maxsplit=4)
+                        if len(parts) >= 5:
                             room_name = parts[1]
                             sender_nick = parts[2]
                             content = parts[3]
-                            formatted_message = f"[#{room_name}|{sender_nick}]: {content}"
+                            timestamp = parts[4]
+                            formatted_message = f"[#{room_name}|{sender_nick}|{timestamp}]: {content}"
                             with self.print_lock:
                                 sys.stdout.write("\r" + " " * 120 + "\r")
                                 print(formatted_message)
