@@ -1,9 +1,11 @@
 import tkinter as tk
 from gui import ChatGUI
+from client import Client
 
 def main():
     root = tk.Tk()
-    app = ChatGUI(root)
+    client = Client()
+    app = ChatGUI(root,client)
     root.mainloop()
 
 if __name__ == "__main__":
