@@ -1,11 +1,13 @@
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
+from tkinter import messagebox
 
 class ChatGUI():
-    def __init__(self,root,client):
+    def __init__(self,root,client,queue):
         self.root = root
-        self.root.title("Chat")
+        self.root.title("Lan Chat App")
         self.client = client
+        self.q = queue
 
         self.current_chat = {"type":"PM","name":"self"}
         self.chats = {}
@@ -15,6 +17,9 @@ class ChatGUI():
         self.build_left_panel()
         self.build_center_panel()
         self.build_right_panel()
+
+        self.start_queue_loop()
+
 
     def build_layout(self):
         self.left_frame = tk.Frame(self.root, width=200)
@@ -48,6 +53,9 @@ class ChatGUI():
         self.room_list.bind("<<ListboxSelect>>", self.on_room_select)
 
     def build_center_panel(self):
+        self.chat_box_label = tk.Label(self.center_frame,text="No chat selected")
+        self.chat_box_label.pack()
+
         self.chat_box = ScrolledText(self.center_frame)
         self.chat_box.pack(fill="both", expand=True)
         self.chat_box.config(state="disabled")
@@ -57,6 +65,7 @@ class ChatGUI():
 
         self.input_entry = tk.Entry(self.input_frame)
         self.input_entry.pack(side="left",fill="x",expand=True)
+        self.input_entry.bind("<Return>", lambda event: self.send_message())
 
         self.send_button = tk.Button(self.input_frame,
                                      text="Send",
@@ -91,11 +100,28 @@ class ChatGUI():
         self.login_label.pack()
         self.login_entry.pack()
         self.login_button.pack()
+        self.login_entry.bind("<Return>", lambda event: self.handle_login())
 
     def handle_login(self):
-        self.nick = self.login_entry.get()
-        self.login_popup.destroy()
-        self.root.deiconify()
+        nick = self.login_entry.get()
+
+        if not self.client.connected:
+            tk.messagebox.showerror("Connection Error","Connection with server Failed")
+            return
+
+        result = self.client.login_gui(nick)
+        if result == "LOGIN|OK":
+            self.nick = nick
+            self.login_popup.destroy()
+            self.root.deiconify()
+        elif result == "ERROR|Nick is empty":
+            tk.messagebox.showerror("Error","Nick is empty")
+        elif result == "ERROR|Nick is already used":
+            tk.messagebox.showerror("Error","Nick is already used")
+        else:
+            tk.messagebox.showerror("Error","Unexpected answer from server")
+
+
 
 
     def send_message(self):
@@ -104,20 +130,19 @@ class ChatGUI():
             message_to_send = "PM" + "|" + self.current_chat.get("name","Unknown") + "|" + msg
             #self.client.send_message(message_to_send)
             gui_msg = self.nick + ":" + " " + msg
-            self.append_message(gui_msg)
+            key = f"{self.current_chat['type']}|{self.current_chat['name']}"
+            self.append_message(key,gui_msg)
             self.input_entry.delete(0, "end")
         elif self.current_chat.get("type",None) == "ROOM":
             message_to_send = "ROOM" + "|"+ self.current_chat.get("name","Unknown") + "|" +  msg
             #self.client.send_message(message_to_send)
             gui_msg = self.nick + ":" + " " + msg
-            self.append_message(gui_msg)
+            key = f"{self.current_chat['type']}|{self.current_chat['name']}"
+            self.append_message(key, gui_msg)
             self.input_entry.delete(0, "end")
 
-    def append_message(self,msg):
-        chat_type = self.current_chat["type"]
-        name = self.current_chat["name"]
-        self.ensure_chat_exists(chat_type,name)
-        key = f"{chat_type}|{name}"
+    def append_message(self,key,msg):
+        self.ensure_chat_exists(key)
         self.chats[key].append(msg)
         self.refresh_chat()
 
@@ -141,12 +166,14 @@ class ChatGUI():
         self.refresh_chat()
 
     def switch_chat(self,chat_type,name):
-        self.ensure_chat_exists(chat_type,name)
+        key = f"{chat_type}|{name}"
+        self.ensure_chat_exists(key)
         self.current_chat = {"type":chat_type,"name":name}
         self.refresh_chat()
 
 
     def refresh_chat(self):
+        self.chat_box_label.config(text=f"{self.current_chat['type']}|{self.current_chat['name']}")
         self.chat_box.config(state="normal")
         self.chat_box.delete("1.0","end")
 
@@ -156,10 +183,47 @@ class ChatGUI():
 
         self.chat_box.config(state="disabled")
 
-    def ensure_chat_exists(self,chat_type,name):
-        key= f"{chat_type}|{name}"
+    def ensure_chat_exists(self,key):
         if key not in self.chats:
             self.chats[key] = []
+
+    def process_queue(self):
+        while not self.q.empty():
+            #"PM", sender_nick, content, timestamp
+            #"ROOM", room_name, sender_nick, content, timestamp
+            message = self.q.get()
+            chat_type = message[0]
+            if chat_type=="PM":
+                name = message[1]
+                content = message[2]
+                timestamp = message[3]
+                key= f"{chat_type}|{name}"
+                formatted_message = f"{timestamp}|{name}: {content}"
+                self.append_message(key,formatted_message)
+            elif chat_type=="ROOM":
+                room_name = message[1]
+                sender_nick = message[2]
+                content = message[3]
+                timestamp = message[4]
+                key = f"{chat_type}|{room_name}"
+                formatted_message = f"{timestamp}|{room_name}|{sender_nick}: {content}"
+                self.append_message(key,formatted_message)
+            elif chat_type=="USERS_UPDATE":
+                users= message[1]
+                self.users_list.delete(0, "end")
+                for u in users:
+                    self.users_list.insert("end", u)
+            elif chat_type=="ROOMS_UPDATE":
+                rooms = message[1]
+                self.room_list.delete(0, "end")
+                for r in rooms:
+                    self.room_list.insert("end", r)
+
+    def start_queue_loop(self):
+        self.process_queue()
+        self.root.after(100, self.start_queue_loop)
+
+
 
 
 
