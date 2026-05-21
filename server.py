@@ -77,6 +77,35 @@ class Server():
                 continue
             else:
                 self.send_message(conn,"LOGIN|OK")
+                with self.clients_lock:
+                    users = list(self.clients.keys())
+
+                if self.clients:
+                    answer_users = "USERS" + "|" + ",".join(users)
+                else:
+                    answer_users = "USERS" + "|" + ""
+                with self.clients_lock:
+                    for c in self.clients.values():
+                        self.send_message(c,answer_users)
+
+
+
+                with self.rooms_lock:
+                    rooms_with_users = list(self.rooms.items())
+
+                if rooms_with_users:
+                    parts = []
+                    for room, users in rooms_with_users:
+                        users_str = ",".join(users)
+                        parts.append(f"{room}:{users_str}")
+
+                    answer_rooms = "ROOMS" + "|" + ";".join(parts)
+                else:
+                    answer_rooms = "ROOMS" + "|" + ""
+                with self.clients_lock:
+                    for c in self.clients.values():
+                        self.send_message(c, answer_rooms)
+
                 return nick
 
     def chat_loop(self,conn,nick):
