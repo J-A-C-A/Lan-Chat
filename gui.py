@@ -44,11 +44,14 @@ class ChatGUI():
         self.room_label = tk.Label(self.left_room_frame,text="Your Rooms")
         self.room_label.pack()
 
+        self.leave_room_button = tk.Button(self.left_room_frame,text="Leave Room", command= self.handle_leave_room)
+
         self.pm_list = tk.Listbox(self.left_pm_frame)
         self.room_list = tk.Listbox(self.left_room_frame)
 
         self.pm_list.pack(fill="both", expand=True)
         self.room_list.pack(fill="both", expand=True)
+        self.leave_room_button.pack()
 
         self.pm_list.bind("<<ListboxSelect>>", self.on_pm_select)
         self.room_list.bind("<<ListboxSelect>>", self.on_room_select)
@@ -87,6 +90,8 @@ class ChatGUI():
         self.rooms_label = tk.Label(self.right_rooms_frame,text="Available Rooms")
         self.rooms_label.pack()
 
+        self.create_button = tk.Button(self.right_rooms_frame,text="Create Room",command= self.show_create_room_popup)
+
         self.right_users_frame.pack(fill="both", expand=True)
         self.right_rooms_frame.pack(fill="both", expand=True)
 
@@ -95,6 +100,7 @@ class ChatGUI():
 
         self.users_list.pack(fill="both", expand=True)
         self.rooms_list_right.pack(fill="both", expand=True)
+        self.create_button.pack()
 
         self.users_list.bind("<<ListboxSelect>>", self.on_user_select)
         self.rooms_list_right.bind("<<ListboxSelect>>", self.on_room_right_select)
@@ -108,9 +114,45 @@ class ChatGUI():
         self.login_label.pack()
         self.login_entry.pack()
         self.login_button.pack()
-        self.login_entry.bind("<Return>", lambda event: self.handle_login())
+        self.login_entry.bind("<Return>", self.handle_login)
 
-    def handle_login(self):
+    def show_create_room_popup(self):
+        self.room_popup = tk.Toplevel(self.root)
+        self.room_popup.title("Create Room")
+        self.room_popup_label = tk.Label(self.room_popup,text="Enter room name")
+        self.room_entry = tk.Entry(self.room_popup)
+        self.room_button = tk.Button(self.room_popup,text="Create", command=self.handle_creat_room)
+
+        self.room_popup_label.pack()
+        self.room_entry.pack()
+        self.room_button.pack()
+        self.room_entry.bind("<Return>", self.handle_creat_room)
+
+    def handle_creat_room(self,event=None):
+        name = self.room_entry.get()
+        if not name:
+            return
+        self.client.send_message(f"/join|{name}")
+        self.rooms_list_right.insert("end",name)
+        self.room_list.insert("end",name)
+        self.switch_chat("ROOM",name)
+        self.room_popup.destroy()
+
+    def handle_leave_room(self,event=None):
+        if not self.room_list.curselection():
+            return
+
+        index = self.room_list.curselection()[0]
+        room = self.room_list.get(index)
+        self.client.send_message(f"/leave|{room}")
+        self.room_list.delete(index)
+        self.current_chat = {"type": "PM", "name": "self"}
+        self.chat_box_label.config(text="No chat selected")
+        self.chat_box.config(state="normal")
+        self.chat_box.delete("1.0", "end")
+        self.chat_box.config(state="disabled")
+
+    def handle_login(self,event=None):
         nick = self.login_entry.get()
 
         if not self.client.connected:
@@ -137,8 +179,6 @@ class ChatGUI():
         msg = self.input_entry.get()
         if self.current_chat.get("type",None) == "PM":
             message_to_send = "PM" + "|" + self.current_chat.get("name","Unknown") + "|" + msg
-            print(message_to_send)
-            print(self.current_chat)
             self.client.send_message(message_to_send)
             gui_msg = self.nick + ":" + " " + msg
             key = f"{self.current_chat['type']}|{self.current_chat['name']}"
@@ -146,8 +186,6 @@ class ChatGUI():
             self.input_entry.delete(0, "end")
         elif self.current_chat.get("type",None) == "ROOM":
             message_to_send = "ROOM" + "|"+ self.current_chat.get("name","Unknown") + "|" +  msg
-            print(message_to_send)
-            print(self.current_chat)
             self.client.send_message(message_to_send)
             gui_msg = self.nick + ":" + " " + msg
             key = f"{self.current_chat['type']}|{self.current_chat['name']}"
@@ -169,7 +207,7 @@ class ChatGUI():
 
 
 
-    def on_pm_select(self,event):
+    def on_pm_select(self,event=None):
         selection = self.pm_list.curselection()
         if not selection:
             return
@@ -186,7 +224,7 @@ class ChatGUI():
         name = self.room_list.get(index)
         self.switch_chat(chat_type="ROOM",name=name)
 
-    def on_user_select(self,event):
+    def on_user_select(self,event=None):
         selection = self.users_list.curselection()
         if not selection:
             return
@@ -198,7 +236,7 @@ class ChatGUI():
 
         self.switch_chat(chat_type="PM",name=name)
 
-    def on_room_right_select(self,event):
+    def on_room_right_select(self,event=None):
         selection = self.rooms_list_right.curselection()
         if not selection:
             return
