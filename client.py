@@ -93,6 +93,33 @@ class Client():
             except OSError:
                 return
 
+    def receive_message(self):
+        while True:
+            if self.buffer:
+                parts = self.buffer.split(b"\n")
+                if len(parts) >= 2:
+                    message = parts[0]
+                    self.buffer = b"\n".join(parts[1:])
+                    return message.decode("utf-8")
+
+
+            chunk = self.client_socket.recv(1024)
+            self.buffer += chunk
+
+            if not self.buffer:
+                return None
+
+            parts = self.buffer.split(b"\n")
+
+            if len(parts) >= 2:
+                message = parts[0]
+                self.buffer = b"\n".join(parts[1:])
+                return message.decode("utf-8")
+
+    def send_message(self,message):
+        message += "\n"
+        msg_to_send = message.encode("utf-8")
+        self.client_socket.send(msg_to_send)
 
 
 
@@ -222,30 +249,11 @@ class Client():
         print("Server commands:")
         print("/users")
         print("/rooms")
-        print("/join room_name")
-        print("/leave room_name")
+        print("/join|room_name")
+        print("/leave|room_name")
         print("/help")
         print("/quit")
 
-    def receive_message(self):
-        while True:
-            chunk = self.client_socket.recv(1024)
-            self.buffer += chunk
-
-            if not self.buffer:
-                return None
-
-            parts = self.buffer.split(b"\n")
-
-            if len(parts) >= 2:
-                message = parts[0]
-                self.buffer = b"\n".join(parts[1:])
-                return message.decode("utf-8")
-
-    def send_message(self,message):
-        message += "\n"
-        msg_to_send = message.encode("utf-8")
-        self.client_socket.send(msg_to_send)
 
 #if __name__ == "__main__":
     #client = Client()
