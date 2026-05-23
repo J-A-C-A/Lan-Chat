@@ -58,7 +58,7 @@ class Server():
                 self.send_message(conn,"ERROR|Nick is empty")
                 continue
 
-            pattern = r'^[a-zA-Z0-9_\-\.ąęłćńóśźżĄĘŁĆŃÓŚŹŻ]+$'
+            pattern = r'^[a-zA-Z0-9_\-\.ąęłćńóśźżĄĘŁĆŃÓŚŹŻ]+( [a-zA-Z0-9_\-\.ąęłćńóśźżĄĘŁĆŃÓŚŹŻ]+)*$'
             result = re.match(pattern, nick)
             if  result is None:
                 self.send_message(conn,"ERROR|You have entered an invalid characters")
@@ -310,8 +310,7 @@ class Server():
 
 
     def command_handler(self,nick,conn,msg):
-        command = msg.split(" ",maxsplit=1)
-
+        command = msg.split("|",maxsplit=1)
         if command[0] == "/join" and len(command) > 1:
             self.join_room(nick=nick,conn=conn,name=command[1])
         elif command[0] == "/leave" and len(command) > 1:
