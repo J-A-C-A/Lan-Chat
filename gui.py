@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
 from tkinter import messagebox
-
+import datetime as dt
 class ChatGUI():
     def __init__(self,root,client,queue):
         self.root = root
@@ -181,17 +181,19 @@ class ChatGUI():
 
     def send_message(self):
         msg = self.input_entry.get()
+        now = dt.datetime.now()
+        timestamp = now.strftime("%Y-%m-%d %H:%M")
         if self.current_chat.get("type",None) == "PM":
             message_to_send = "PM" + "|" + self.current_chat.get("name","Unknown") + "|" + msg
             self.client.send_message(message_to_send)
-            gui_msg = self.nick + ":" + " " + msg
+            gui_msg = f"{timestamp}|{self.nick}: {msg}"
             key = f"{self.current_chat['type']}|{self.current_chat['name']}"
             self.append_message(key,gui_msg)
             self.input_entry.delete(0, "end")
         elif self.current_chat.get("type",None) == "ROOM":
             message_to_send = "ROOM" + "|"+ self.current_chat.get("name","Unknown") + "|" +  msg
             self.client.send_message(message_to_send)
-            gui_msg = self.nick + ":" + " " + msg
+            gui_msg = f"{timestamp}|{self.nick}: {msg}"
             key = f"{self.current_chat['type']}|{self.current_chat['name']}"
             self.append_message(key, gui_msg)
             self.input_entry.delete(0, "end")
@@ -239,6 +241,7 @@ class ChatGUI():
             self.pm_list.insert("end",name)
 
         self.switch_chat(chat_type="PM",name=name)
+        self.client.send_message(f"/history|{name}")
 
     def on_room_right_select(self,event=None):
         selection = self.rooms_list_right.curselection()
@@ -293,11 +296,12 @@ class ChatGUI():
             message = self.q.get()
             chat_type = message[0]
             if chat_type=="PM":
-                name = message[1]
-                content = message[2]
-                timestamp = message[3]
-                key = self.create_key(chat_type,name)
-                formatted_message = f"{timestamp}|{name}: {content}"
+                conversation_key = message[1] # other klucz czatu
+                sender = message[2]
+                content = message[3]
+                timestamp = message[4]
+                key = self.create_key(chat_type,conversation_key)
+                formatted_message = f"{timestamp}|{sender}: {content}"
                 self.append_message(key,formatted_message)
             elif chat_type=="ROOM":
                 room_name = message[1]

@@ -2,6 +2,7 @@ import socket as soc
 import threading as thr
 import datetime as dt
 import re
+from database import Database
 
 class Server():
     def __init__(self):
@@ -14,6 +15,7 @@ class Server():
         self.message_counters = {}
         self.send_locks = {}
         self.message_times_of_reset = {}
+        self.db = Database()
         self.RATE_LIMIT = 5
         self.RATE_LIMIT_BAN = 10
         self.MAX_BUFFER_SIZE = 4096
@@ -206,18 +208,20 @@ class Server():
         conn.close()
 
     def route_message(self,nick,conn,cmd,target,msg):
+        now = dt.datetime.now()
+        timestamp = now.strftime("%Y-%m-%d %H:%M")
 
         if cmd == "PM":
-            self.send_private(nick,conn,cmd,target,msg)
+            self.db.save_message(sender=nick,time_stamp=timestamp,content=msg,receiver=target,room=None)
+            self.send_private(nick,conn,cmd,target,msg,timestamp)
         elif cmd == "ROOM":
-            self.send_room(nick,conn,cmd,target,msg)
+            self.db.save_message(sender=nick,time_stamp=timestamp,content=msg,room=target)
+            self.send_room(nick,conn,cmd,target,msg,timestamp)
         else:
             print("ERROR|Invalid message format")
             return
 
-    def message_formatting(self,sender_nick,cmd,target,msg):
-        now = dt.datetime.now()
-        timestamp = now.strftime("%Y-%m-%d %H:%M")
+    def message_formatting(self,sender_nick,cmd,target,msg,timestamp):
 
         if cmd == "PM":
             message = cmd + "|" + sender_nick + "|" + target + "|" + msg + "|" + timestamp
@@ -229,7 +233,7 @@ class Server():
         return message
 
 
-    def send_private(self,sender_nick,sender_conn,cmd,target,msg):
+    def send_private(self,sender_nick,sender_conn,cmd,target,msg,timestamp):
         print("TARGET:", target)
         with self.clients_lock:
             print("Clients:", self.clients.keys())
@@ -238,7 +242,7 @@ class Server():
 
         if target_conn is not None:
                 print("SENDING TO: ", target_conn)
-                complex_message = self.message_formatting(sender_nick,cmd,target,msg)
+                complex_message = self.message_formatting(sender_nick,cmd,target,msg,timestamp)
                 if complex_message is not None:
                     try:
                         self.send_message(target_conn,complex_message)
@@ -254,8 +258,8 @@ class Server():
             return
 
 
-    def send_room(self,sender_nick,sender_conn,cmd,target,msg):
-        complex_message = self.message_formatting(sender_nick,cmd,target,msg)
+    def send_room(self,sender_nick,sender_conn,cmd,target,msg,timestamp):
+        complex_message = self.message_formatting(sender_nick,cmd,target,msg,timestamp)
 
         if complex_message is None:
             print("ERROR|Invalid message format")
@@ -295,10 +299,18 @@ class Server():
             room = self.rooms.get(name,None)
             if room is None:
                 self.rooms[name] = [nick]
+                history = self.db.get_room_history(name)
+                for record in history:
+                    message_to_send = f"ROOM|{name}|{record[0]}|{record[2]}|{record[1]}"
+                    self.send_message(conn, message_to_send)
             elif nick in room:
                 err_user_already_in_room = True
             else:
                 self.rooms[name].append(nick)
+                history = self.db.get_room_history(name)
+                for record in history:
+                    message_to_send = f"ROOM|{name}|{record[0]}|{record[2]}|{record[1]}"
+                    self.send_message(conn,message_to_send)
 
         with self.rooms_lock:
             rooms_with_users = list(self.rooms.items())
@@ -397,6 +409,12 @@ class Server():
         elif command[0] == "/quit":
             self.clean_up(conn,nick)
             return "QUIT"
+        elif command[0] == "/history":
+            target = command[1]
+            history = self.db.get_pm_history(nick,target)
+            for record in history:
+                message_to_send = f"PM|{record[0]}|{record[1]}|{record[4]}|{record[3]}"
+                self.send_message(conn,message_to_send)
         else:
             self.send_message(conn,"ERROR|Invalid command")
 

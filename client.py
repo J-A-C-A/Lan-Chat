@@ -56,9 +56,15 @@ class Client():
                         parts = message.split("|", maxsplit=4)
                         if len(parts) >= 5:
                             sender_nick = parts[1]
+                            receiver_nick = parts[2]
                             content = parts[3]
                             timestamp = parts[4]
-                            message_to_return = ("PM", sender_nick, content, timestamp)
+
+                            if sender_nick == self.nick:
+                                conversation_key = receiver_nick
+                            else:
+                                conversation_key = sender_nick
+                            message_to_return = ("PM", conversation_key,sender_nick, content, timestamp)
                             self.q.put(message_to_return)
 
                     elif message.startswith("ROOM|"):
