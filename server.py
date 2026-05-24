@@ -171,11 +171,33 @@ class Server():
                 self.rooms[room].remove(nick)
                 if len(self.rooms[room]) == 0:
                     self.rooms.pop(room)
+            rooms_with_users = list(self.rooms.items())
+
+        if rooms_with_users:
+            parts = []
+            for room, users in rooms_with_users:
+                users_str = ",".join(users)
+                parts.append(f"{room}:{users_str}")
+            answer_rooms = "ROOMS" + "|" + ";".join(parts)
+        else:
+            answer_rooms = "ROOMS" + "|" + ""
 
         with self.clients_lock:
             self.clients.pop(nick,None)
             self.buffers.pop(conn, None)
             self.send_locks.pop(conn,None)
+            users = list(self.clients.keys())
+
+        if self.clients:
+            answer_users = "USERS" + "|" + ",".join(users)
+        else:
+            answer_users = "USERS" + "|" + ""
+
+        with self.clients_lock:
+            for c in self.clients.values():
+                self.send_message(c, answer_users)
+            for c in self.clients.values():
+                self.send_message(c, answer_rooms)
 
         with self.rate_limit_lock:
             self.message_times_of_reset.pop(nick,None)

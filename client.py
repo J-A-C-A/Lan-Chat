@@ -89,7 +89,10 @@ class Client():
                             rooms = []
                         message_to_return = ("ROOMS_UPDATE", rooms)
                         self.q.put(message_to_return)
-
+                    elif message.startswith("LOG|"):
+                        self.q.put(("LOG", message[4:]))
+                    elif message.startswith("ERROR|"):
+                        self.q.put(("ERROR", message[6:]))
             except OSError:
                 return
 

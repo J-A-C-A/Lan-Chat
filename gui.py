@@ -28,6 +28,9 @@ class ChatGUI():
         self.center_frame = tk.Frame(self.root, width=500)
         self.right_frame = tk.Frame(self.root, width=200)
 
+        self.status_bar = tk.Label(self.root,text="",anchor="w",relief="sunken")
+        self.status_bar.pack(side="bottom",fill="x")
+
         self.left_frame.pack(side="left", fill="y")
         self.center_frame.pack(side="left", fill="both",expand=True)
         self.right_frame.pack(side="right", fill="y")
@@ -325,11 +328,20 @@ class ChatGUI():
                     self.rooms_list_right.insert("end", room_name)
                     if self.current_chat["type"]=="ROOM":
                         self.refresh_chat()
+            elif chat_type == "LOG":
+                self.set_status(f"Info: {message[1]}")
+            elif chat_type == "ERROR":
+                self.set_status(f"Error: {message[1]}")
+
 
 
     def start_queue_loop(self):
         self.process_queue()
         self.root.after(100, self.start_queue_loop)
+
+    def set_status(self,message):
+        self.status_bar.config(text=message)
+        self.root.after(3000, lambda: self.status_bar.config(text=""))
 
 
 
