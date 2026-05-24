@@ -278,6 +278,22 @@ class Server():
             else:
                 self.rooms[name].append(nick)
 
+        with self.rooms_lock:
+            rooms_with_users = list(self.rooms.items())
+
+        if rooms_with_users:
+            parts = []
+            for room, users in rooms_with_users:
+                users_str = ",".join(users)
+                parts.append(f"{room}:{users_str}")
+
+            answer_rooms = "ROOMS" + "|" + ";".join(parts)
+        else:
+            answer_rooms = "ROOMS" + "|" + ""
+        with self.clients_lock:
+            for c in self.clients.values():
+                self.send_message(c, answer_rooms)
+
 
         if err_user_already_in_room:
             err_user_already_in_room = False
@@ -301,12 +317,29 @@ class Server():
             else:
                 status = "Room_not_found"
 
+        with self.rooms_lock:
+            rooms_with_users = list(self.rooms.items())
+
+        if rooms_with_users:
+            parts = []
+            for room, users in rooms_with_users:
+                users_str = ",".join(users)
+                parts.append(f"{room}:{users_str}")
+
+            answer_rooms = "ROOMS" + "|" + ";".join(parts)
+        else:
+            answer_rooms = "ROOMS" + "|" + ""
+        with self.clients_lock:
+            for c in self.clients.values():
+                self.send_message(c, answer_rooms)
+
         if status == "Left_room":
             self.send_message(conn,f"LOG|You left room: {name}")
         elif status ==  "Not_in_room":
             self.send_message(conn,"ERROR|User is not in the room")
         elif status == "Room_not_found":
             self.send_message(conn,"ERROR|Room does not exist")
+
 
 
     def command_handler(self,nick,conn,msg):

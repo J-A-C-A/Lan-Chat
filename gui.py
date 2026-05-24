@@ -12,6 +12,7 @@ class ChatGUI():
 
         self.current_chat = {"type":"PM","name":"self"}
         self.chats = {}
+        self.rooms_data = {}
         self.root.withdraw()
         self.show_login_popup()
         self.build_layout()
@@ -258,7 +259,14 @@ class ChatGUI():
         self.refresh_chat()
 
     def refresh_chat(self):
-        self.chat_box_label.config(text=f"{self.current_chat['type']}|{self.current_chat['name']}")
+        chat_type = self.current_chat["type"]
+        name = self.current_chat["name"]
+        if chat_type == "ROOM":
+            users = self.rooms_data.get(name,[])
+            users_str = ",".join(users)
+            self.chat_box_label.config(text=f"ROOM|{name}: {users_str}")
+        else:
+            self.chat_box_label.config(text=f"{chat_type}|{name}")
         self.chat_box.config(state="normal")
         self.chat_box.delete("1.0","end")
         key = self.create_key(self.current_chat['type'],self.current_chat["name"])
@@ -304,8 +312,20 @@ class ChatGUI():
             elif chat_type=="ROOMS_UPDATE":
                 rooms = message[1]
                 self.rooms_list_right.delete(0, "end")
+                self.rooms_data = {}
                 for r in rooms:
-                    self.rooms_list_right.insert("end", r)
+                    parts = r.split(":")
+                    room_name = parts[0]
+                    if len(parts)> 1:
+                        users = parts[1].split(",")
+                    else:
+                        users = []
+
+                    self.rooms_data[room_name] = users
+                    self.rooms_list_right.insert("end", room_name)
+                    if self.current_chat["type"]=="ROOM":
+                        self.refresh_chat()
+
 
     def start_queue_loop(self):
         self.process_queue()
