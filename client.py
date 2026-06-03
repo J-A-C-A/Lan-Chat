@@ -49,6 +49,7 @@ class Client():
                 message = self.receive_message()
                 if not message:
                     self.running = False
+                    self.q.put(("ERROR","Disconnected from server"))
                     break
                 else:
                     if message.startswith("PM|"):
@@ -100,6 +101,8 @@ class Client():
                     elif message.startswith("ERROR|"):
                         self.q.put(("ERROR", message[6:]))
             except OSError:
+                self.running = False
+                self.q.put(("ERROR","Connection lost"))
                 return
 
     def receive_message(self):
@@ -113,11 +116,11 @@ class Client():
 
 
             chunk = self.client_socket.recv(1024)
-            self.buffer += chunk
 
-            if not self.buffer:
+            if not chunk:
                 return None
 
+            self.buffer += chunk
             parts = self.buffer.split(b"\n")
 
             if len(parts) >= 2:
