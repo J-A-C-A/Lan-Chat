@@ -21,6 +21,7 @@ class ChatGUI():
         self.build_right_panel()
 
         self.start_queue_loop()
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
 
     def build_layout(self):
@@ -125,14 +126,14 @@ class ChatGUI():
         self.room_popup.title("Create Room")
         self.room_popup_label = tk.Label(self.room_popup,text="Enter room name")
         self.room_entry = tk.Entry(self.room_popup)
-        self.room_button = tk.Button(self.room_popup,text="Create", command=self.handle_creat_room)
+        self.room_button = tk.Button(self.room_popup, text="Create", command=self.handle_create_room)
 
         self.room_popup_label.pack()
         self.room_entry.pack()
         self.room_button.pack()
-        self.room_entry.bind("<Return>", self.handle_creat_room)
+        self.room_entry.bind("<Return>", self.handle_create_room)
 
-    def handle_creat_room(self,event=None):
+    def handle_create_room(self,event=None):
         name = self.room_entry.get()
         if not name:
             return
@@ -183,6 +184,11 @@ class ChatGUI():
         msg = self.input_entry.get()
         now = dt.datetime.now()
         timestamp = now.strftime("%Y-%m-%d %H:%M")
+
+        if not self.client.running:
+            self.set_status("Disconnected - cannot send messages")
+            return
+
         if self.current_chat.get("type",None) == "PM":
             message_to_send = "PM" + "|" + self.current_chat.get("name","Unknown") + "|" + msg
             self.client.send_message(message_to_send)
@@ -346,6 +352,19 @@ class ChatGUI():
     def set_status(self,message):
         self.status_bar.config(text=message)
         self.root.after(3000, lambda: self.status_bar.config(text=""))
+
+    def on_close(self):
+        self.client.running = False
+        try:
+            self.client.send_message("/quit")
+        except (OSError,ConnectionResetError,BrokenPipeError):
+            pass
+
+        try:
+            self.client.client_socket.close()
+        except (OSError,ConnectionResetError,BrokenPipeError):
+            pass
+        self.root.after(100, self.root.destroy)
 
 
 
