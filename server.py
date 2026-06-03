@@ -60,10 +60,8 @@ class Server():
                 self.send_message(conn,"ERROR|Nick is empty")
                 continue
 
-            pattern = r'^[a-zA-Z0-9_\-\.ąęłćńóśźżĄĘŁĆŃÓŚŹŻ]+( [a-zA-Z0-9_\-\.ąęłćńóśźżĄĘŁĆŃÓŚŹŻ]+)*$'
-            result = re.match(pattern, nick)
-            if  result is None:
-                self.send_message(conn,"ERROR|You have entered an invalid characters")
+            if not self.validate_name(nick):
+                self.send_message(conn, "ERROR|You have entered an invalid characters")
                 continue
 
 
@@ -295,6 +293,12 @@ class Server():
 
     def join_room(self,nick,conn,name):
         err_user_already_in_room = False
+
+        if not self.validate_name(name):
+            self.send_message(conn, "ERROR|You have entered an invalid characters")
+            return
+
+
         with self.rooms_lock:
             room = self.rooms.get(name,None)
             if room is None:
@@ -324,10 +328,10 @@ class Server():
             answer_rooms = "ROOMS" + "|" + ";".join(parts)
         else:
             answer_rooms = "ROOMS" + "|" + ""
+
         with self.clients_lock:
             for c in self.clients.values():
                 self.send_message(c, answer_rooms)
-
 
         if err_user_already_in_room:
             err_user_already_in_room = False
@@ -476,6 +480,13 @@ class Server():
             if len(self.buffers[conn]) > self.MAX_BUFFER_SIZE:
                 raise OverflowError("Buffer overflow")
 
+    def validate_name(self,name):
+        pattern = r'^[a-zA-Z0-9_\-\.ąęłćńóśźżĄĘŁĆŃÓŚŹŻ]+( [a-zA-Z0-9_\-\.ąęłćńóśźżĄĘŁĆŃÓŚŹŻ]+)*$'
+        result = re.match(pattern,name)
+        if result is not None:
+            return True
+        else:
+            return False
 
 if __name__ == "__main__":
     server = Server()
